@@ -146,10 +146,12 @@ OneWire::OneWire(uint8_t pin)
 static uint8_t busFailFlag; 	// Set to one if bus failed to return to high via pull-up
 
 //
-// Perform the onewire reset function.  1=Ok to proceed, 0=no devices found or possible short to ground on bus
+// Perform the onewire reset function.  1=Ok to proceed, 0=no devices found or possible short to
+// ground on bus; call busFail() after a 0 return value, to see if the bus failed to recover
+// (eg. due to either a short, or a weak pull-up resistor).
 //
-// We will wait up to 250uS for the bus to come high, if it doesn't then it is broken or shorted and
-// we return a 0;
+// If ONEWIRE_RESET_HIGHWAIT defined and > 0, we will wait up to the specified number of uS for the
+// bus to come high, if it doesn't then it is broken or shorted and we return a 0;
 // 
 // First we will send a reset pulse and see if any slaves send back a presence pulse. If not, then
 // we return 0.
@@ -168,25 +170,30 @@ uint8_t OneWire::reset(void)
     volatile IO_REG_TYPE *reg IO_REG_ASM = baseReg;
     uint8_t r;
 
+#if defined( ONEWIRE_RESET_HIGHWAIT ) && ONEWIRE_RESET_HIGHWAIT
     // Enable pull-up and wait until the wire is high... just in case.  Establishes initial
-    // conditions to perform a reset.  Generally, these conditions will already be established.
+    // conditions to perform a reset.  Generally, these conditions will already be established; if
+    // so, no delay is incurred.
     noInterrupts();
-    DIRECT_MODE_INPUT( reg, mask );
-    DIRECT_WRITE_HIGH( reg, mask );
+    DIRECT_MODE_INPUT( reg, mask );	// Stop driving
+    DIRECT_WRITE_HIGH( reg, mask );	// enable pull-up resistor
     interrupts();
-    for ( uint8_t retries = 125; ( r = !DIRECT_READ( reg, mask )) && retries; --retries )
-	delayMicroseconds( 2 );
+    for ( uint8_t retries = ONEWIRE_RESET_HIGHWAIT / ONEWIRE_RESET_HIGHWAIT_LATENCY
+	      ; ( r = !DIRECT_READ( reg, mask )) && retries
+	      ; --retries )
+	delayMicroseconds( ONEWIRE_RESET_HIGHWAIT_LATENCY );
     if ( r ) {
 	busFailFlag = 1;		// Remember that bus did not return to high. Used to support busTest()
 	return 0;
     }
+#endif // ONEWIRE_RESET_HIGHWAIT defined and > 0
 
     // First drive the bus low to send reset pulse
     noInterrupts();
     DIRECT_WRITE_LOW( reg, mask );
     DIRECT_MODE_OUTPUT( reg, mask );	// drive output low
     interrupts();
-    delayMicroseconds(480);		// Wait for salves to see the reset pulse (Trstl)
+    delayMicroseconds(480);		// Wait for slaves to see the reset pulse (Trstl)
     noInterrupts();
     DIRECT_MODE_INPUT( reg, mask );	// Stop driving low
     DIRECT_WRITE_HIGH( reg , mask );	// enable pull-up resistor
@@ -238,19 +245,19 @@ void OneWire::write_bit(uint8_t v)
     if (v & 1) {
 	noInterrupts();
 	DIRECT_WRITE_LOW( reg, mask );
-	DIRECT_MODE_OUTPUT( reg, mask );		// drive output low
+	DIRECT_MODE_OUTPUT( reg, mask );// drive output low
 	delayMicroseconds(10);
-	DIRECT_WRITE_HIGH( reg, mask );		// drive output high
+	DIRECT_WRITE_HIGH( reg, mask );	// drive output high
 	interrupts();
-	delayMicroseconds(55);			// Make sure output is high when slave samples 15us-60us after initial low
+	delayMicroseconds(55);		// Make sure output is high when slave samples 15us-60us after initial low
     } else {
 	noInterrupts();
 	DIRECT_WRITE_LOW( reg, mask );
-	DIRECT_MODE_OUTPUT( reg, mask );		// drive output low
-	delayMicroseconds(65);			// Make sure output is low when salve samples 15us-60us after initial low
-	DIRECT_WRITE_HIGH( reg, mask );		// drive high
+	DIRECT_MODE_OUTPUT( reg, mask );// drive output low
+	delayMicroseconds(65);		// Make sure output is low when salve samples 15us-60us after initial low
+	DIRECT_WRITE_HIGH( reg, mask );	// drive high
 	interrupts();
-	delayMicroseconds(5);			// continue driving high for at least 1us recovery (Trec)
+	delayMicroseconds(5);		// continue driving high for at least 1us recovery (Trec)
     }
 }
 

@@ -48,6 +48,17 @@
 #define FALSE 0
 #define TRUE  1
 
+// If ONEWIRE_RESET_HIGHWAIT is defined and > 0, we will await the specified
+// number of microseconds for 1-wire bus to be pulled high, before attempting
+// the reset.  The ratio ..._HIGHWAIT / ..._HIGHWAIT_LATENCY must be in the
+// range (0,255).
+#ifndef ONEWIRE_RESET_HIGHWAIT
+#define ONEWIRE_RESET_HIGHWAIT 250		// Total wait, in uS
+#endif
+#ifndef ONEWIRE_RESET_HIGHWAIT_LATENCY
+#define ONEWIRE_RESET_HIGHWAIT_LATENCY 10	// Latency between checks, in uS
+#endif
+
 // Platform specific I/O definitions
 
 #if defined(__AVR__)
