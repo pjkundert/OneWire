@@ -66,7 +66,8 @@
 // TODO: The Teensy 3.1 board pull-up doesn't seem to work for 1-wire, in either
 // direct or Arduino mode...  Don't know why -- the pinMode and digitalWrite
 // operations seem to work fine on their own, but not when used as w/
-// ONEWIRE_PULLUP == 1!  
+// ONEWIRE_PULLUP == 1!  Writing high after setting mode input seems to work
+// on the Teensy-LC, though...  Very strange.
 // 
 #ifndef ONEWIRE_PULLUP
 #define ONEWIRE_PULLUP			0
