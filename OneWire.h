@@ -53,10 +53,23 @@
 // the reset.  The ratio ..._HIGHWAIT / ..._HIGHWAIT_LATENCY must be in the
 // range (0,255).
 #ifndef ONEWIRE_RESET_HIGHWAIT
-#define ONEWIRE_RESET_HIGHWAIT 250		// Total wait, in uS
+#define ONEWIRE_RESET_HIGHWAIT		250	// uS; Total wait
 #endif
 #ifndef ONEWIRE_RESET_HIGHWAIT_LATENCY
-#define ONEWIRE_RESET_HIGHWAIT_LATENCY 10	// Latency between checks, in uS
+#define ONEWIRE_RESET_HIGHWAIT_LATENCY	10	// uS; Latency between checks
+#endif
+
+// If ONEWIRE_PULLUP defined and true, then enable on-chip pull-up, if possible.
+// This may allow us to support small 1-wire networks w/o an external resistor.
+// DIRECT_MODE_INPUT_PULLUP must be defined for the architecture.
+// 
+// TODO: The Teensy 3.1 board pull-up doesn't seem to work for 1-wire, in either
+// direct or Arduino mode...  Don't know why -- the pinMode and digitalWrite
+// operations seem to work fine on their own, but not when used as w/
+// ONEWIRE_PULLUP == 1!  
+// 
+#ifndef ONEWIRE_PULLUP
+#define ONEWIRE_PULLUP			0
 #endif
 
 // Platform specific I/O definitions
@@ -71,17 +84,54 @@
 #define DIRECT_MODE_OUTPUT(base, mask)  ((*((base)+1)) |= (mask))
 #define DIRECT_WRITE_LOW(base, mask)    ((*((base)+2)) &= ~(mask))
 #define DIRECT_WRITE_HIGH(base, mask)   ((*((base)+2)) |= (mask))
+#define DIRECT_MODE_INPUT_PULLUP(b,m)   (DIRECT_MODE_INPUT(b,m), DIRECT_WRITE_HIGH(b,m))
+
+#elif ONEWIRE_PULLUP && ( defined( __MK20DX128__ ) || defined( __MK20DX256__ ) || defined(__MKL26Z64__))
+/*
+ * Teensy-3.x/LC must use standard Arduino API for digital I/O so that we can
+ * access the INPUT pull-up resistor; does not appear to work for some platforms
+ * when simply asserting digital out High after changing the pin-mode to Input.
+ */
+#define PIN_TO_BASEREG(pin)             (0)
+#define PIN_TO_BITMASK(pin)             (pin)
+#define IO_REG_TYPE unsigned int
+#define IO_REG_ASM
+#if 0
+#define DIRECT_READ(base, pin)          ((void)base, digitalRead(pin))
+#define DIRECT_WRITE_LOW(base, pin)     ((void)base, digitalWrite(pin, LOW))
+#define DIRECT_WRITE_HIGH(base, pin)    ((void)base, digitalWrite(pin, HIGH))
+#define DIRECT_MODE_INPUT(base, pin)    ((void)base, pinMode(pin,INPUT))
+#define DIRECT_MODE_OUTPUT(base, pin)   ((void)base, pinMode(pin,OUTPUT))
+#define DIRECT_MODE_INPUT_PULLUP(base, pin) ((void)base, pinMode(pin,INPUT_PULLUP))
+#else
+#define DIRECT_READ(base, pin)          digitalRead(pin)
+#define DIRECT_WRITE_LOW(base, pin)     digitalWrite(pin, LOW)
+#define DIRECT_WRITE_HIGH(base, pin)    digitalWrite(pin, HIGH)
+#define DIRECT_MODE_INPUT(base, pin)    pinMode(pin,INPUT)
+#define DIRECT_MODE_OUTPUT(base, pin)   pinMode(pin,OUTPUT)
+#define DIRECT_MODE_INPUT_PULLUP(base, pin) pinMode(pin,INPUT_PULLUP)
+#endif
+#warning "OneWire. Teensy-3.x/LC using Arduino API w/ pull-up."
 
 #elif defined(__MK20DX128__) || defined(__MK20DX256__)
 #define PIN_TO_BASEREG(pin)             (portOutputRegister(pin))
 #define PIN_TO_BITMASK(pin)             (1)
 #define IO_REG_TYPE uint8_t
 #define IO_REG_ASM
+#if 0
+#define DIRECT_READ(base, mask)         ((void)(mask), *((base)+512))
+#define DIRECT_MODE_INPUT(base, mask)   ((void)(mask), *((base)+640) = 0)
+#define DIRECT_MODE_OUTPUT(base, mask)  ((void)(mask), *((base)+640) = 1)
+#define DIRECT_WRITE_LOW(base, mask)    ((void)(mask), *((base)+256) = 1)
+#define DIRECT_WRITE_HIGH(base, mask)   ((void)(mask), *((base)+128) = 1)
+#else
 #define DIRECT_READ(base, mask)         (*((base)+512))
 #define DIRECT_MODE_INPUT(base, mask)   (*((base)+640) = 0)
 #define DIRECT_MODE_OUTPUT(base, mask)  (*((base)+640) = 1)
 #define DIRECT_WRITE_LOW(base, mask)    (*((base)+256) = 1)
 #define DIRECT_WRITE_HIGH(base, mask)   (*((base)+128) = 1)
+#endif
+#warning "OneWire. Teensy-3.x mode.  No pull-up."
 
 #elif defined(__MKL26Z64__)
 #define PIN_TO_BASEREG(pin)             (portOutputRegister(pin))
@@ -93,6 +143,7 @@
 #define DIRECT_MODE_OUTPUT(base, mask)  (*((base)+20) |= (mask))
 #define DIRECT_WRITE_LOW(base, mask)    (*((base)+8) = (mask))
 #define DIRECT_WRITE_HIGH(base, mask)   (*((base)+4) = (mask))
+#warning "OneWire. Teensy-LC mode.  No pull-up."
 
 #elif defined(__SAM3X8E__)
 // Arduino 1.5.1 may have a bug in delayMicroseconds() on Arduino Due.
@@ -108,6 +159,7 @@
 #define DIRECT_MODE_OUTPUT(base, mask)  ((*((base)+4)) = (mask))
 #define DIRECT_WRITE_LOW(base, mask)    ((*((base)+13)) = (mask))
 #define DIRECT_WRITE_HIGH(base, mask)   ((*((base)+12)) = (mask))
+#define DIRECT_MODE_INPUT_PULLUP(b,m)   (DIRECT_MODE_INPUT(b,m), DIRECT_WRITE_HIGH(b,m))
 #ifndef PROGMEM
 #define PROGMEM
 #endif
@@ -125,27 +177,32 @@
 #define DIRECT_MODE_OUTPUT(base, mask)  ((*(base+1)) = (mask))            //TRISXCLR + 0x04
 #define DIRECT_WRITE_LOW(base, mask)    ((*(base+8+1)) = (mask))          //LATXCLR  + 0x24
 #define DIRECT_WRITE_HIGH(base, mask)   ((*(base+8+2)) = (mask))          //LATXSET + 0x28
+#define DIRECT_MODE_INPUT_PULLUP(b,m)   (DIRECT_MODE_INPUT(b,m), DIRECT_WRITE_HIGH(b,m))
 
 #else
 #define PIN_TO_BASEREG(pin)             (0)
 #define PIN_TO_BITMASK(pin)             (pin)
 #define IO_REG_TYPE unsigned int
 #define IO_REG_ASM
-#define DIRECT_READ(base, pin)          digitalRead(pin)
-#define DIRECT_WRITE_LOW(base, pin)     digitalWrite(pin, LOW)
-#define DIRECT_WRITE_HIGH(base, pin)    digitalWrite(pin, HIGH)
-#define DIRECT_MODE_INPUT(base, pin)    pinMode(pin,INPUT)
-#define DIRECT_MODE_OUTPUT(base, pin)   pinMode(pin,OUTPUT)
+#define DIRECT_READ(base, pin)          ((void)base, digitalRead(pin))
+#define DIRECT_WRITE_LOW(base, pin)     ((void)base, digitalWrite(pin, LOW))
+#define DIRECT_WRITE_HIGH(base, pin)    ((void)base, digitalWrite(pin, HIGH))
+#define DIRECT_MODE_INPUT(base, pin)    ((void)base, pinMode(pin,INPUT))
+#define DIRECT_MODE_OUTPUT(base, pin)   ((void)base, pinMode(pin,OUTPUT))
 #warning "OneWire. Fallback mode. Using API calls for pinMode,digitalRead and digitalWrite. Operation of this library is not guaranteed on this architecture."
-
+#  if defined( INPUT_PULLUP )
+#    define DIRECT_MODE_INPUT_PULLUP(base, pin)	pinMode(pin,INPUT_PULLUP)
+#  else
+#    error "OneWire. Fallback mode; no pull-up available."
+#  endif
 #endif
-
 
 class OneWire
 {
   private:
     IO_REG_TYPE bitmask;
     volatile IO_REG_TYPE *baseReg;
+    uint8_t busFailFlag; // Set to one if bus failed to return to high via pull-up
 
 #if ONEWIRE_SEARCH
     // global search state
